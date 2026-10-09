@@ -1,0 +1,159 @@
+openapi: 3.0.3
+info:
+  title: Shop API
+  version: 1.0.0
+  description: |
+    Второй веб-сервис: дополнительные операции над транспортными средствами.
+
+    Сервис не хранит данные сам, а выполняет операции через вызовы API первого сервиса. 
+    Все параметры операций передаются в URL запроса,
+    результат возвращается в формате XML (`application/xml`).
+
+servers:
+  - url: http://soa.example.com/api/v1
+    description: Экземпляр сервиса
+
+tags:
+  - name: Shop
+    description: Операции автомастерской
+
+paths:
+  /shop/fix-distance/{vehicle-id}:
+    patch:
+      tags: [Shop]
+      summary: Скрутить счётчик пробега до нуля
+      description: |
+        Устанавливает значение поля `distanceTravelled` транспортного средства
+        с заданным идентификатором равным 0. Операция идемпотентна.
+      operationId: fixDistance
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+      responses:
+        '200':
+          description: Транспортное средство с обнулённым пробегом
+          content:
+            application/xml:
+              schema:
+                $ref: './vehicles-service.yaml#/components/schemas/Vehicle'
+              example:
+                id: 1
+                name: Aurora
+                coordinates:
+                  x: 10
+                  y: 20
+                creationDate: '2026-10-08T15:36:00+03:00'
+                enginePower: 150
+                capacity: 4.5
+                distanceTravelled: 0
+                type: BOAT
+                numberOfWheels: 4
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /shop/add-wheels/{vehicle-id}/{number-of-wheels}:
+    patch:
+      tags: [Shop]
+      summary: Добавить колёса транспортному средству
+      description: |
+        Увеличивает значение поля `numberOfWheels` транспортного средства
+        с заданным идентификатором на указанное число колёс.
+      operationId: addWheels
+      parameters:
+        - $ref: '#/components/parameters/VehicleId'
+        - name: number-of-wheels
+          in: path
+          required: true
+          description: Сколько колёс добавить
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+          example: 2
+      responses:
+        '200':
+          description: Транспортное средство с новым числом колёс
+          content:
+            application/xml:
+              schema:
+                $ref: './vehicles-service.yaml#/components/schemas/Vehicle'
+              example:
+                id: 1
+                name: Aurora
+                coordinates:
+                  x: 10
+                  y: 20
+                creationDate: '2026-10-08T15:36:00+03:00'
+                enginePower: 150
+                capacity: 4.5
+                distanceTravelled: 1500.5
+                type: BOAT
+                numberOfWheels: 6
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+components:
+  parameters:
+    VehicleId:
+      name: vehicle-id
+      in: path
+      required: true
+      description: Идентификатор транспортного средства
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+      example: 1
+
+  responses:
+    BadRequest:
+      description: Некорректное значение параметра в URL
+      content:
+        application/xml:
+          schema:
+            $ref: './vehicles-service.yaml#/components/schemas/Error'
+          example:
+            code: 400
+            message: Некорректное значение параметра запроса
+            time: '2026-10-08T15:36:00+03:00'
+    NotFound:
+      description: Транспортное средство с заданным идентификатором не найдено
+      content:
+        application/xml:
+          schema:
+            $ref: './vehicles-service.yaml#/components/schemas/Error'
+          example:
+            code: 404
+            message: Транспортное средство не найдено
+            time: '2026-10-08T15:36:00+03:00'
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/xml:
+          schema:
+            $ref: './vehicles-service.yaml#/components/schemas/Error'
+          example:
+            code: 500
+            message: Внутренняя ошибка сервера
+            time: '2026-10-08T15:36:00+03:00'
+    ServiceUnavailable:
+      description: Первый сервис (Vehicles Collection API) недоступен
+      content:
+        application/xml:
+          schema:
+            $ref: './vehicles-service.yaml#/components/schemas/Error'
+          example:
+            code: 503
+            message: Сервис коллекции недоступен
+            time: '2026-10-08T15:36:00+03:00'

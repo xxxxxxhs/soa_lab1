@@ -1,0 +1,609 @@
+openapi: 3.0.3
+info:
+  title: Vehicles Collection API
+  version: 1.0.0
+  description: |
+    Первый веб-сервис: управление коллекцией объектов `Vehicle`.
+
+    Данные об объектах коллекции передаются в формате XML (`application/xml`).
+    Идентификаторы, параметры фильтрации, сортировки и постраничного вывода передаются в URL запроса.
+
+servers:
+  - url: http://soa.example.com/api/v1
+    description: Экземпляр сервиса
+
+tags:
+  - name: Vehicles
+    description: Базовые операции над коллекцией
+  - name: Extra
+    description: Дополнительные операции над коллекцией
+
+paths:
+  /vehicles:
+    get:
+      tags: [Vehicles]
+      summary: Получить массив транспортных средств
+      description: |
+        Возвращает страницу элементов коллекции. Поддерживает сортировку и фильтрацию
+        по любой комбинации полей, а также постраничный вывод.
+
+        **Сортировка.** Параметр `sort` — список полей через запятую. Префикс `-` означает
+        сортировку по убыванию. Пример: `sort=type,-enginePower`.
+
+        **Фильтрация.** Параметр `filter` можно указывать несколько раз, условия объединяются
+        по «И». Формат одного условия: `поле[оператор]=значение`.
+        Операторы: `eq` (равно), `ne` (не равно), `gt` (больше), `gte` (больше или равно),
+        `lt` (меньше), `lte` (меньше или равно). Строки сравниваются лексикографически,
+        для поля `type` допустимы только `eq` и `ne`.
+        Пример: `filter=type[eq]=BOAT&filter=enginePower[gte]=100`.
+      operationId: getVehicles
+      parameters:
+        - name: sort
+          in: query
+          description: Поля сортировки. Префикс `-` — по убыванию.
+          required: false
+          style: form
+          explode: false
+          schema:
+            type: array
+            uniqueItems: true
+            items:
+              type: string
+              enum:
+                - id
+                - -id
+                - name
+                - -name
+                - coordinates.x
+                - -coordinates.x
+                - coordinates.y
+                - -coordinates.y
+                - creationDate
+                - -creationDate
+                - enginePower
+                - -enginePower
+                - capacity
+                - -capacity
+                - distanceTravelled
+                - -distanceTravelled
+                - type
+                - -type
+                - numberOfWheels
+                - -numberOfWheels
+          example: [type, -enginePower]
+        - name: filter
+          in: query
+          description: Условия фильтрации в формате `поле[оператор]=значение`.
+          required: false
+          style: form
+          explode: true
+          schema:
+            type: array
+            items:
+              type: string
+              pattern: '^(id|name|coordinates\.x|coordinates\.y|creationDate|enginePower|capacity|distanceTravelled|type|numberOfWheels)\[(eq|ne|gt|gte|lt|lte)\]=.+$'
+          example: ['type[eq]=BOAT', 'enginePower[gte]=100']
+        - name: page
+          in: query
+          description: Порядковый номер страницы, начиная с 1.
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+        - name: size
+          in: query
+          description: Размер страницы.
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: |
+            Страница элементов коллекции. Если под условия фильтрации не подошёл ни один
+            элемент либо запрошена страница за пределами выборки, возвращается пустой
+            список `vehicles` и актуальные значения `totalElements` и `totalPages`.
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/VehiclePage'
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    post:
+      tags: [Vehicles]
+      summary: Добавить транспортное средство
+      description: |
+        Создаёт новый элемент коллекции. Поля `id` и `creationDate` генерируются сервисом
+        автоматически и в запросе не передаются.
+      operationId: addVehicle
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/VehicleInput'
+      responses:
+        '201':
+          description: Элемент создан
+          headers:
+            Location:
+              description: URL созданного элемента
+              schema:
+                type: string
+                format: uri
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /vehicles/{id}:
+    parameters:
+      - $ref: '#/components/parameters/VehicleId'
+    get:
+      tags: [Vehicles]
+      summary: Получить транспортное средство по ИД
+      description: Возвращает элемент коллекции с заданным идентификатором.
+      operationId: getVehicleById
+      responses:
+        '200':
+          description: Найденный элемент
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    put:
+      tags: [Vehicles]
+      summary: Обновить транспортное средство целиком
+      description: |
+        Полностью заменяет значения полей элемента с заданным идентификатором.
+        Поля `id` и `creationDate` не изменяются.
+      operationId: updateVehicle
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/VehicleInput'
+      responses:
+        '200':
+          description: Обновлённый элемент
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    patch:
+      tags: [Vehicles]
+      summary: Обновить транспортное средство частично
+      description: |
+        Изменяет только те поля элемента, которые переданы в теле запроса.
+        Остальные поля остаются без изменений.
+      operationId: patchVehicle
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/VehiclePatch'
+            example:
+              name: Aurora II
+              enginePower: 200
+      responses:
+        '200':
+          description: Обновлённый элемент
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+    delete:
+      tags: [Vehicles]
+      summary: Удалить транспортное средство
+      description: Удаляет элемент коллекции с заданным идентификатором.
+      operationId: deleteVehicle
+      responses:
+        '204':
+          description: Элемент удалён
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /vehicles/type/{type}:
+    delete:
+      tags: [Extra]
+      summary: Удалить одно транспортное средство заданного типа
+      description: |
+        Удаляет один (любой) элемент коллекции, значение поля `type` которого
+        эквивалентно заданному.
+      operationId: deleteOneByType
+      parameters:
+        - name: type
+          in: path
+          required: true
+          description: Тип транспортного средства
+          schema:
+            $ref: '#/components/schemas/VehicleType'
+      responses:
+        '204':
+          description: Элемент удалён
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '404':
+          description: В коллекции нет элементов заданного типа
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /vehicles/max-name:
+    get:
+      tags: [Extra]
+      summary: Получить транспортное средство с максимальным name
+      description: |
+        Возвращает один (любой) элемент коллекции, значение поля `name` которого
+        является максимальным. Строки сравниваются лексикографически.
+      operationId: getVehicleWithMaxName
+      responses:
+        '200':
+          description: Элемент с максимальным значением name
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+        '404':
+          description: Коллекция пуста
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /vehicles/distance-travelled/{distanceTravelled}/count:
+    get:
+      tags: [Extra]
+      summary: Посчитать транспортные средства с заданным пробегом
+      description: |
+        Возвращает количество элементов коллекции, значение поля `distanceTravelled`
+        которых равно заданному.
+      operationId: countByDistanceTravelled
+      parameters:
+        - name: distanceTravelled
+          in: path
+          required: true
+          description: Значение пробега
+          schema:
+            type: number
+            format: float
+            minimum: 0
+          example: 1500.5
+      responses:
+        '200':
+          description: Количество найденных элементов
+          content:
+            application/xml:
+              schema:
+                $ref: '#/components/schemas/CountResult'
+        '400':
+          $ref: '#/components/responses/InvalidParameter'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    VehicleId:
+      name: id
+      in: path
+      required: true
+      description: Идентификатор транспортного средства
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+      example: 1
+
+  responses:
+    InvalidParameter:
+      description: Неверный тип или формат параметра в URL
+      content:
+        application/xml:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 400
+            message: Некорректное значение параметра запроса
+            time: '2026-10-08T15:36:00+03:00'
+    BadRequest:
+      description: Некорректный запрос — невалидный XML в теле либо неверный тип или формат параметра в URL
+      content:
+        application/xml:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 400
+            message: Некорректное значение параметра запроса
+            time: '2026-10-08T15:36:00+03:00'
+    NotFound:
+      description: Элемент с заданным идентификатором не найден
+      content:
+        application/xml:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 404
+            message: Транспортное средство не найдено
+            time: '2026-10-08T15:36:00+03:00'
+    UnprocessableEntity:
+      description: Переданные данные нарушают ограничения целостности полей класса
+      content:
+        application/xml:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 422
+            message: 'enginePower: значение должно быть больше 0'
+            time: '2026-10-08T15:36:00+03:00'
+    InternalError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/xml:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: 500
+            message: Внутренняя ошибка сервера
+            time: '2026-10-08T15:36:00+03:00'
+
+  schemas:
+    VehicleType:
+      type: string
+      enum: [PLANE, HELICOPTER, BOAT, SHIP, BICYCLE]
+      example: BOAT
+
+    Coordinates:
+      type: object
+      xml:
+        name: coordinates
+      required: [y]
+      properties:
+        x:
+          type: integer
+          format: int32
+          default: 0
+          example: 10
+        y:
+          type: integer
+          format: int64
+          minimum: -942
+          description: Значение должно быть больше -943
+          example: 20
+
+    Vehicle:
+      type: object
+      xml:
+        name: vehicle
+      required: [id, name, coordinates, creationDate, enginePower, capacity, distanceTravelled, type, numberOfWheels]
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Уникальный идентификатор, генерируется автоматически
+          example: 1
+        name:
+          type: string
+          minLength: 1
+          example: Aurora
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        creationDate:
+          type: string
+          format: date-time
+          description: Дата создания, генерируется автоматически
+          example: '2026-10-08T15:36:00+03:00'
+        enginePower:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 150
+        capacity:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          example: 4.5
+        distanceTravelled:
+          type: number
+          format: float
+          minimum: 0
+          example: 1500.5
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        numberOfWheels:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 4
+
+    VehicleInput:
+      type: object
+      xml:
+        name: vehicle
+      required: [name, coordinates, enginePower, capacity, distanceTravelled, type]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: Aurora
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        enginePower:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 150
+        capacity:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          example: 4.5
+        distanceTravelled:
+          type: number
+          format: float
+          minimum: 0
+          example: 1500.5
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        numberOfWheels:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 0
+          example: 4
+
+    VehiclePatch:
+      type: object
+      description: Все поля необязательны, передаются только изменяемые
+      xml:
+        name: vehicle
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          example: Aurora
+        coordinates:
+          $ref: '#/components/schemas/Coordinates'
+        enginePower:
+          type: integer
+          format: int64
+          minimum: 1
+          example: 150
+        capacity:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          example: 4.5
+        distanceTravelled:
+          type: number
+          format: float
+          minimum: 0
+          example: 0
+        type:
+          $ref: '#/components/schemas/VehicleType'
+        numberOfWheels:
+          type: integer
+          format: int32
+          minimum: 0
+          example: 4
+
+    VehiclePage:
+      type: object
+      xml:
+        name: vehiclePage
+      required: [vehicles, page, size, totalElements, totalPages]
+      properties:
+        vehicles:
+          type: array
+          xml:
+            name: vehicles
+            wrapped: true
+          items:
+            $ref: '#/components/schemas/Vehicle'
+        page:
+          type: integer
+          format: int32
+          description: Номер текущей страницы
+          example: 1
+        size:
+          type: integer
+          format: int32
+          description: Размер страницы
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+          description: Всего элементов, удовлетворяющих фильтру
+          example: 1
+        totalPages:
+          type: integer
+          format: int32
+          description: Всего страниц
+          example: 1
+
+    CountResult:
+      type: object
+      xml:
+        name: countResult
+      required: [count]
+      properties:
+        count:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 3
+
+    Error:
+      type: object
+      xml:
+        name: error
+      required: [code, message, time]
+      properties:
+        code:
+          type: integer
+          format: int32
+          description: Код ответа HTTP
+          example: 400
+        message:
+          type: string
+          description: Описание ошибки
+          example: Некорректный запрос
+        time:
+          type: string
+          format: date-time
+          description: Время возникновения ошибки
+          example: '2026-10-08T15:36:00+03:00'
